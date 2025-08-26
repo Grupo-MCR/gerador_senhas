@@ -1,11 +1,11 @@
 ---
 
-# 🔐 Gerador de Senhas
+#  Gerador de Senhas
 
 Um aplicativo em **Flutter** para gerar senhas seguras a partir de informações personalizadas, 
 utilizando diferentes algoritmos de **hash** (MD5, SHA-1 e SHA-256).
 
-## 🚀 Funcionalidades
+##  Funcionalidades
 
 * Entrada de dados personalizados:
 
@@ -17,17 +17,17 @@ utilizando diferentes algoritmos de **hash** (MD5, SHA-1 e SHA-256).
 * Exibição da **força da senha** (Fraca, Média, Forte).
 * **Cópia rápida** da senha para a área de transferência.
 
-## 🛠️ Tecnologias
+##  Tecnologias
 
 * **Flutter** (Material Design)
 * **Dart**
 * **crypto** (para hashing)
 
-## 📷 Tela do App
+##  Tela do App
 
 *(adicione aqui uma captura de tela do app rodando se quiser)*
 
-## ▶️ Como Executar
+##  Como Executar
 
 1. Clone este repositório:
 
@@ -48,7 +48,7 @@ utilizando diferentes algoritmos de **hash** (MD5, SHA-1 e SHA-256).
    flutter run
    ```
 
-## 📌 Observações
+##  Observações
 
 * O aplicativo não armazena dados do usuário, apenas os utiliza para gerar a senha.
 * O nível de força da senha é uma **estimativa simples**, baseada apenas no comprimento.
