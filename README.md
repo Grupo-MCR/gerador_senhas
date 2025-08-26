@@ -1,4 +1,4 @@
-# gerador_senhas
+# Gerador_senhas
 
 A new Flutter project.
 
