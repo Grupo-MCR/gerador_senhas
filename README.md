@@ -2,7 +2,8 @@
 
 # 🔐 Gerador de Senhas
 
-Um aplicativo em **Flutter** para gerar senhas seguras a partir de informações personalizadas, utilizando diferentes algoritmos de **hash** (MD5, SHA-1 e SHA-256).
+Um aplicativo em **Flutter** para gerar senhas seguras a partir de informações personalizadas, 
+utilizando diferentes algoritmos de **hash** (MD5, SHA-1 e SHA-256).
 
 ## 🚀 Funcionalidades
 
