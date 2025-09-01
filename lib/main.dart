@@ -1,89 +1,259 @@
-import 'dart:convert'; 
-import 'package:flutter/material.dart'; 
-import 'package:flutter/services.dart'; 
+import 'dart:convert';
+import 'dart:math';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:crypto/crypto.dart';
+import 'package:encrypt/encrypt.dart' as enc;
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const MyApp());
 }
 
-// Classe principal do aplicativo
+/// App principal
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false, // remove a faixa "debug" do canto da tela
+      debugShowCheckedModeBanner: false,
       title: 'Gerador de Senhas',
-      theme: ThemeData(primarySwatch: Colors.indigo), 
+      theme: ThemeData(primarySwatch: Colors.indigo),
       home: const PasswordPage(),
     );
   }
 }
 
+/// Tela única
 class PasswordPage extends StatefulWidget {
   const PasswordPage({super.key});
-
   @override
   State<PasswordPage> createState() => _PasswordPageState();
 }
 
-// Estado da tela 
 class _PasswordPageState extends State<PasswordPage> {
-  final _formKey = GlobalKey<FormState>(); // chave para validar o formulário
+  final _formKey = GlobalKey<FormState>();
 
-  // Controladores para pegar o texto digitado
   final servicoController = TextEditingController();
   final usuarioController = TextEditingController();
   final fraseController = TextEditingController();
+  final salController = TextEditingController(); // opcional
 
-  double comprimento = 12; // comprimento padrão da senha
-  String metodo = 'SHA-256'; // método padrão de hash
-  String senhaGerada = ''; // senha que será gerada
-  String forca = ''; // indicador de força da senha
+  double comprimento = 12;
+  String metodo = 'SHA-256';
+  bool useLower = true;
+  bool useUpper = true;
+  bool useDigits = true;
+  bool useSymbols = false;
 
-  // Função para gerar a senha
+  String senhaGerada = '';
+  double strengthScore = 0.0;
+  String strengthLabel = '—';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPrefs();
+  }
+
+  Future<void> _loadPrefs() async {
+    final sp = await SharedPreferences.getInstance();
+    setState(() {
+      metodo = sp.getString('metodo') ?? 'SHA-256';
+      comprimento = sp.getDouble('comprimento') ?? 12.0;
+      useLower = sp.getBool('useLower') ?? true;
+      useUpper = sp.getBool('useUpper') ?? true;
+      useDigits = sp.getBool('useDigits') ?? true;
+      useSymbols = sp.getBool('useSymbols') ?? false;
+    });
+  }
+
+  Future<void> _savePrefs() async {
+    final sp = await SharedPreferences.getInstance();
+    await sp.setString('metodo', metodo);
+    await sp.setDouble('comprimento', comprimento);
+    await sp.setBool('useLower', useLower);
+    await sp.setBool('useUpper', useUpper);
+    await sp.setBool('useDigits', useDigits);
+    await sp.setBool('useSymbols', useSymbols);
+  }
+
+  String _buildSeed() {
+    final service = servicoController.text.trim();
+    final user = usuarioController.text.trim();
+    final pass = fraseController.text;
+    final salt = salController.text.trim();
+    return 'svc:$service|usr:$user|pass:$pass|salt:$salt';
+  }
+
+  List<int> _deriveBytesDeterministic({
+    required String seed,
+    required String passphrase,
+    required int neededLen,
+  }) {
+    final bytes = <int>[];
+    int counter = 0;
+
+    List<int> nextChunk() {
+      final counterStr = '::$counter';
+      final material = utf8.encode(seed + counterStr);
+
+      if (metodo == 'MD5') {
+        return md5.convert(material).bytes;
+      } else if (metodo == 'SHA-1') {
+        return sha1.convert(material).bytes;
+      } else if (metodo == 'AES-CBC') {
+        final keyBytes = sha256.convert(utf8.encode(passphrase)).bytes;
+        final ivFull = sha256.convert(utf8.encode(seed)).bytes;
+        final iv = enc.IV(Uint8List.fromList(ivFull.sublist(0, 16)));
+        final key = enc.Key(Uint8List.fromList(keyBytes));
+        final aes = enc.Encrypter(
+            enc.AES(key, mode: enc.AESMode.cbc, padding: 'PKCS7'));
+        final ct = aes.encryptBytes(material, iv: iv);
+        return ct.bytes;
+      } else {
+        return sha256.convert(material).bytes;
+      }
+    }
+
+    while (bytes.length < neededLen) {
+      bytes.addAll(nextChunk());
+      counter++;
+      if (counter > 1e6) break;
+    }
+    return bytes.sublist(0, neededLen);
+  }
+
+  void _detShuffle<T>(List<T> list, List<int> rndBytes) {
+    int i = list.length - 1;
+    int p = 0;
+    while (i > 0) {
+      final b1 = rndBytes[p % rndBytes.length];
+      final b2 = rndBytes[(p + 1) % rndBytes.length];
+      final b = (b1 << 8) ^ b2;
+      final j = b % (i + 1);
+      final tmp = list[i];
+      list[i] = list[j];
+      list[j] = tmp;
+      i--;
+      p += 2;
+    }
+  }
+
+  String _formatPassword({
+    required String seed,
+    required int length,
+    required bool lower,
+    required bool upper,
+    required bool digits,
+    required bool symbols,
+    required List<int> rndBytes,
+  }) {
+    final lowers = List<String>.generate(26, (i) => String.fromCharCode(97 + i));
+    final uppers = List<String>.generate(26, (i) => String.fromCharCode(65 + i));
+    final nums = List<String>.generate(10, (i) => String.fromCharCode(48 + i));
+    final syms = r'!@#$%^&*()-_=+[]{};:,.?/'.split('');
+
+    final pools = <List<String>>[];
+    if (lower) pools.add(lowers);
+    if (upper) pools.add(uppers);
+    if (digits) pools.add(nums);
+    if (symbols) pools.add(syms);
+
+    if (pools.isEmpty) {
+      throw StateError('Selecione ao menos uma classe de caracteres.');
+    }
+
+    final alphabet = <String>[];
+    for (final p in pools) alphabet.addAll(p);
+
+    int idx = 0;
+    int next() {
+      final b1 = rndBytes[idx % rndBytes.length];
+      final b2 = rndBytes[(idx + 1) % rndBytes.length];
+      idx += 2;
+      return ((b1 << 8) ^ b2) & 0x7fffffff;
+    }
+
+    final chars = <String>[];
+    for (final pool in pools) {
+      final n = next() % pool.length;
+      chars.add(pool[n]);
+    }
+
+    while (chars.length < length) {
+      final n = next() % alphabet.length;
+      chars.add(alphabet[n]);
+    }
+
+    final shuffleSeed = sha256.convert(utf8.encode(seed + '::shuffle')).bytes;
+    _detShuffle(chars, shuffleSeed);
+
+    return chars.take(length).join();
+  }
+
+  void _calcStrength(String pwd) {
+    if (pwd.isEmpty) {
+      strengthScore = 0.0;
+      strengthLabel = '—';
+      return;
+    }
+    int classes = 0;
+    if (RegExp(r'[a-z]').hasMatch(pwd)) classes++;
+    if (RegExp(r'[A-Z]').hasMatch(pwd)) classes++;
+    if (RegExp(r'[0-9]').hasMatch(pwd)) classes++;
+    if (RegExp(r'[!@#\$%\^&\*\(\)\-\_\=\+\[\]\{\};:,\.\?\/]').hasMatch(pwd)) classes++;
+
+    final lenScore = (pwd.length / 20).clamp(0.0, 1.0);
+    final classScore = (classes / 4).clamp(0.0, 1.0);
+    strengthScore = (0.6 * lenScore + 0.4 * classScore).clamp(0.0, 1.0);
+
+    if (strengthScore < 0.33) {
+      strengthLabel = 'Fraca';
+    } else if (strengthScore < 0.66) {
+      strengthLabel = 'Média';
+    } else {
+      strengthLabel = 'Forte';
+    }
+  }
+
   void gerarSenha() {
-    String semente =
-        servicoController.text + usuarioController.text + fraseController.text;
+    final seed = _buildSeed();
 
-    // transformamos em bytes
-    List<int> bytes = utf8.encode(semente);
-
-    // escolhemos o algoritmo de hash
-    Digest digest;
-    if (metodo == 'MD5') {
-      digest = md5.convert(bytes);
-    } else if (metodo == 'SHA-1') {
-      digest = sha1.convert(bytes);
-    } else {
-      digest = sha256.convert(bytes);
+    if (!(useLower || useUpper || useDigits || useSymbols)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecione ao menos uma classe de caracteres.')),
+      );
+      return;
     }
 
-    // convertemos o hash em base64 para virar caracteres legíveis
-    String base = base64UrlEncode(digest.bytes);
+    final needed = max(comprimento.toInt() * 2, 64);
+    final rnd = _deriveBytesDeterministic(
+      seed: seed,
+      passphrase: fraseController.text,
+      neededLen: needed,
+    );
 
-    // cortamos a senha para o comprimento que o usuário escolheu
-    senhaGerada = base.substring(0, comprimento.toInt());
+    final pwd = _formatPassword(
+      seed: seed,
+      length: comprimento.toInt(),
+      lower: useLower,
+      upper: useUpper,
+      digits: useDigits,
+      symbols: useSymbols,
+      rndBytes: rnd,
+    );
 
-    // calculamos o nivel de dificuldade da senha de forma simples
-    if (senhaGerada.length < 10) {
-      forca = 'Fraca';
-    } else if (senhaGerada.length < 16) {
-      forca = 'Média';
-    } else {
-      forca = 'Forte';
-    }
+    senhaGerada = pwd;
+    _calcStrength(pwd);
 
-    // atualiza a tela
     setState(() {});
   }
 
-  // Função para copiar a senha para a área de transferência
   void copiarSenha() {
-    if (senhaGerada.isEmpty) return; // só copia se tiver senha
-    Clipboard.setData(ClipboardData(text: senhaGerada)); // copia
+    if (senhaGerada.isEmpty) return;
+    Clipboard.setData(ClipboardData(text: senhaGerada));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Senha copiada!')),
     );
@@ -96,22 +266,18 @@ class _PasswordPageState extends State<PasswordPage> {
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Form(
-          key: _formKey, // liga o form à chave para validar
+          key: _formKey,
           child: ListView(
             children: [
-              // Campo de Serviço/Site
               TextFormField(
                 controller: servicoController,
                 decoration: const InputDecoration(
                   labelText: 'Serviço/Site',
                   border: OutlineInputBorder(),
                 ),
-                validator: (v) =>
-                    v == null || v.isEmpty ? 'Informe o serviço' : null,
+                validator: (v) => v == null || v.trim().isEmpty ? 'Informe o serviço' : null,
               ),
               const SizedBox(height: 12),
-
-              // Campo de Usuário (opcional)
               TextFormField(
                 controller: usuarioController,
                 decoration: const InputDecoration(
@@ -120,21 +286,24 @@ class _PasswordPageState extends State<PasswordPage> {
                 ),
               ),
               const SizedBox(height: 12),
-
-              // Campo de Frase-base (obrigatório e oculto com bolinhas)
               TextFormField(
                 controller: fraseController,
                 decoration: const InputDecoration(
                   labelText: 'Frase-base',
                   border: OutlineInputBorder(),
                 ),
-                obscureText: true, // oculta o texto digitado
-                validator: (v) =>
-                    v == null || v.isEmpty ? 'Informe a frase-base' : null,
+                obscureText: true,
+                validator: (v) => v == null || v.isEmpty ? 'Informe a frase-base' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: salController,
+                decoration: const InputDecoration(
+                  labelText: 'Sal/Seed (opcional)',
+                  border: OutlineInputBorder(),
+                ),
               ),
               const SizedBox(height: 20),
-
-              // Slider para escolher o comprimento
               Text('Comprimento: ${comprimento.round()}'),
               Slider(
                 value: comprimento,
@@ -143,11 +312,10 @@ class _PasswordPageState extends State<PasswordPage> {
                 divisions: 24,
                 onChanged: (v) {
                   setState(() => comprimento = v);
+                  _savePrefs();
                 },
               ),
-              const SizedBox(height: 20),
-
-              // Dropdown para escolher o método de hash
+              const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: metodo,
                 decoration: const InputDecoration(
@@ -158,38 +326,79 @@ class _PasswordPageState extends State<PasswordPage> {
                   DropdownMenuItem(value: 'MD5', child: Text('MD5')),
                   DropdownMenuItem(value: 'SHA-1', child: Text('SHA-1')),
                   DropdownMenuItem(value: 'SHA-256', child: Text('SHA-256')),
+                  DropdownMenuItem(value: 'AES-CBC', child: Text('AES-CBC')),
                 ],
-                onChanged: (v) => setState(() => metodo = v!),
+                onChanged: (v) {
+                  setState(() => metodo = v!);
+                  _savePrefs();
+                },
+              ),
+              const SizedBox(height: 12),
+              SwitchListTile(
+                title: const Text('Letras minúsculas'),
+                value: useLower,
+                onChanged: (v) {
+                  setState(() => useLower = v);
+                  _savePrefs();
+                },
+              ),
+              SwitchListTile(
+                title: const Text('Letras maiúsculas'),
+                value: useUpper,
+                onChanged: (v) {
+                  setState(() => useUpper = v);
+                  _savePrefs();
+                },
+              ),
+              SwitchListTile(
+                title: const Text('Números'),
+                value: useDigits,
+                onChanged: (v) {
+                  setState(() => useDigits = v);
+                  _savePrefs();
+                },
+              ),
+              SwitchListTile(
+                title: const Text('Símbolos'),
+                value: useSymbols,
+                onChanged: (v) {
+                  setState(() => useSymbols = v);
+                  _savePrefs();
+                },
               ),
               const SizedBox(height: 20),
-
-              // Botão para gerar a senha
               ElevatedButton(
                 onPressed: () {
-                  if (_formKey.currentState!.validate()) {
-                    gerarSenha();
-                  }
+                  if (_formKey.currentState!.validate()) gerarSenha();
                 },
                 child: const Text('Gerar Senha'),
               ),
               const SizedBox(height: 20),
-
-              // Mostra a senha gerada, força e botão de copiar
               if (senhaGerada.isNotEmpty) ...[
                 SelectableText(
                   senhaGerada,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                Text('Força: $forca'),
+                LinearProgressIndicator(
+                  value: strengthScore,
+                  minHeight: 6,
+                  color: strengthScore > 0.66
+                      ? Colors.green
+                      : strengthScore > 0.33
+                          ? Colors.orange
+                          : Colors.red,
+                  backgroundColor: Colors.grey[300],
+                ),
+                const SizedBox(height: 4),
+                Text('Força: $strengthLabel'),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
                   onPressed: copiarSenha,
                   icon: const Icon(Icons.copy),
                   label: const Text('Copiar'),
                 ),
-              ]
+              ],
             ],
           ),
         ),
