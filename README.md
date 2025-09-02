@@ -1,50 +1,65 @@
-#  Gerador de Senhas
+# Gerador de Senhas Determinístico
 
-Um aplicativo em **Flutter** para gerar senhas seguras a partir de informações personalizadas, 
-utilizando diferentes algoritmos de **hash** (MD5, SHA-1 e SHA-256).
+Aplicativo Flutter para gerar **senhas seguras e reproduzíveis**, baseadas em **frase-base (chave mestra)**, **serviço/site** e **algoritmos de hash/cripto**.  
 
-##  Funcionalidades
+As senhas nunca são armazenadas: elas são sempre calculadas no momento, garantindo **privacidade e segurança**.
 
-* Entrada de dados personalizados:
-
-* **Serviço/Site** (obrigatório)
-* **Usuário** (opcional)
-* **Frase-base** (obrigatório, com ocultação de caracteres)
-* Escolha do **comprimento da senha** (8 a 32 caracteres).
-* Seleção do **algoritmo de hash** (MD5, SHA-1, SHA-256).
-* Exibição da **força da senha** (Fraca, Média, Forte).
-* **Cópia rápida** da senha para a área de transferência.
-
-##  Tecnologias
-
-* **Flutter** (Material Design)
-* **Dart**
-* **crypto** (para hashing)
-
-##  Como Executar
-
-1. Clone este repositório:
-
-   ```bash
-   git clone https://github.com/Grupo-MCR/gerador_senhas.git
-   cd gerador-senhas-flutter
-   ```
-
-2. Instale as dependências:
-
-   ```bash
-   flutter pub get
-   ```
-
-3. Execute no emulador ou dispositivo físico:
-
-   ```bash
-   flutter run
-   ```
-
-##  Observações
-
-* O aplicativo não armazena dados do usuário, apenas os utiliza para gerar a senha.
-* O nível de força da senha é uma **estimativa simples**, baseada apenas no comprimento.
-* **Este é um exercício acadêmico e não devem ser usadas senhas geradas por ele, pois o mesmo falta com com etapas utilizadas por geradores de senhas comerciais**
 ---
+
+## Funcionalidades
+
+- Geração de senhas **determinísticas** (sempre iguais para a mesma combinação de dados).  
+- Suporte a algoritmos de hash/cripto:
+  - `MD5`  
+  - `SHA-1`  
+  - `SHA-256` (padrão)  
+  - `AES-CBC`  
+- Controle de **comprimento da senha** (8 a 32 caracteres).  
+- Personalização de classes de caracteres:
+  - Letras minúsculas  
+  - Letras maiúsculas  
+  - Números  
+  - Símbolos  
+- Indicador de **força da senha** (fraca, média, forte).  
+- Botão para **copiar senha** para a área de transferência.  
+- Armazena suas **preferências locais** (comprimento, algoritmo e seleção de caracteres).  
+
+---
+
+## Interface
+
+- **Campos de entrada**:  
+  - Serviço/Site  
+  - Usuário (opcional)  
+  - Frase-base (obrigatório, chave mestra)  
+  - Sal/Seed extra (opcional, aumenta entropia)  
+
+- **Configurações**:  
+  - Comprimento da senha (slider)  
+  - Algoritmo de hash/cripto (dropdown)  
+  - Seleção de letras, números e símbolos (switches)  
+
+- **Saída**:  
+  - Senha gerada (campo selecionável)  
+  - Barra de força da senha  
+  - Botão de copiar senha  
+
+---
+
+## Como rodar o projeto
+
+### Pré-requisitos
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) (>= 3.x recomendado)  
+- Dart >= 2.17  
+
+### Executando
+```bash
+# Clone o repositório
+git clone https://github.com/seu-usuario/gerador-senhas.git
+cd gerador-senhas
+
+# Instale as dependências
+flutter pub get
+
+# Rode no emulador ou dispositivo físico
+flutter run
